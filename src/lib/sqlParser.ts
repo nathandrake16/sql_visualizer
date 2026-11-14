@@ -1,9 +1,14 @@
 import { SCHEMA_METADATA } from '@/data/seed';
 import {
+  CteSpec,
   JoinClause,
   JoinType,
   ParsedQuery,
   SelectColumnSpec,
+  SubquerySpec,
+  VizMode,
+  WindowFunctionSpec,
+  WindowOrderSpec,
 } from '@/types/sql';
 
 const SQL_KEYWORDS = new Set([
@@ -24,8 +29,7 @@ const SQL_KEYWORDS = new Set([
   'UNION',
 ]);
 
-function stripSqlComments(sql: string): string {
-  // Remove -- line comments and /* block comments */ while preserving string literals
+export function stripSqlComments(sql: string): string {
   let out = '';
   let i = 0;
   let inSingle = false;
@@ -70,7 +74,7 @@ function stripSqlComments(sql: string): string {
   return out;
 }
 
-function splitTopLevelCommas(input: string): string[] {
+export function splitTopLevelCommas(input: string): string[] {
   const parts: string[] = [];
   let current = '';
   let depth = 0;
@@ -105,14 +109,123 @@ function splitTopLevelCommas(input: string): string[] {
   return parts;
 }
 
+function findTopLevelKeywordIndex(
+  sql: string,
+  regex: RegExp,
+  startFrom = 0
+): { index: number; match: RegExpExecArray } | null {
+  let depth = 0;
+  let inSingle = false;
+  let inDouble = false;
+
+  const chars = sql.split('');
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    if (!inDouble && ch === "'") {
+      inSingle = !inSingle;
+      chars[i] = ' ';
+      continue;
+    }
+    if (!inSingle && ch === '"') {
+      inDouble = !inDouble;
+      chars[i] = ' ';
+      continue;
+    }
+    if (inSingle || inDouble) {
+      chars[i] = ' ';
+      continue;
+    }
+    if (ch === '(') {
+      depth++;
+      chars[i] = ' ';
+      continue;
+    }
+    if (ch === ')') {
+      depth = Math.max(0, depth - 1);
+      chars[i] = ' ';
+      continue;
+    }
+    if (depth > 0) {
+      chars[i] = ' ';
+    }
+  }
+
+  const masked = chars.join('');
+  const globalRegex = new RegExp(
+    regex.source,
+    regex.flags.includes('g') ? regex.flags : `${regex.flags}g`
+  );
+  globalRegex.lastIndex = startFrom;
+  const match = globalRegex.exec(masked);
+  if (!match) return null;
+  return { index: match.index, match };
+}
+
+function parseWindowFunction(rawExpr: string): WindowFunctionSpec | null {
+  const overMatch = rawExpr.match(
+    /([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)\s+OVER\s*\(([\s\S]*?)\)(?:\s+(?:AS\s+)?([a-zA-Z_][a-zA-Z0-9_]*))?$/i
+  );
+  if (!overMatch) return null;
+
+  const funcName = overMatch[1].toUpperCase();
+  const rawArgs = overMatch[2].trim();
+  const funcArgs = rawArgs ? splitTopLevelCommas(rawArgs) : [];
+  const overBody = overMatch[3].trim();
+  const alias = overMatch[4]?.trim();
+
+  let partitionBy: string[] = [];
+  const partHit = overBody.match(/\bPARTITION\s+BY\s+([\s\S]+?)(?=\bORDER\s+BY|\bROWS|\bRANGE|$)/i);
+  if (partHit) {
+    partitionBy = splitTopLevelCommas(partHit[1].trim()).map((s) => s.replace(/["`]/g, '').trim());
+  }
+
+  const orderBy: WindowOrderSpec[] = [];
+  const orderHit = overBody.match(/\bORDER\s+BY\s+([\s\S]+?)(?=\bROWS|\bRANGE|$)/i);
+  if (orderHit) {
+    const rawOrderItems = splitTopLevelCommas(orderHit[1].trim());
+    for (const item of rawOrderItems) {
+      const match = item.match(/^([a-zA-Z0-9_.]+)(?:\s+(ASC|DESC))?$/i);
+      if (match) {
+        orderBy.push({
+          column: match[1].replace(/["`]/g, '').trim(),
+          direction: match[2]?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC',
+        });
+      }
+    }
+  }
+
+  let frameSpec: WindowFunctionSpec['frameSpec'];
+  const frameHit = overBody.match(/\b(ROWS|RANGE)\s+BETWEEN\s+([\s\S]+?)\s+AND\s+([\s\S]+?)$/i);
+  if (frameHit) {
+    frameSpec = {
+      type: frameHit[1].toUpperCase() === 'RANGE' ? 'RANGE' : 'ROWS',
+      start: frameHit[2].trim(),
+      end: frameHit[3].trim(),
+      raw: frameHit[0].trim(),
+    };
+  }
+
+  return {
+    raw: rawExpr,
+    funcName,
+    funcArgs,
+    partitionBy,
+    orderBy,
+    frameSpec,
+    alias,
+  };
+}
+
 function parseSelectList(selectText: string): {
   selectAll: boolean;
   selectColumns: SelectColumnSpec[];
+  windowFunctions: WindowFunctionSpec[];
 } {
   const trimmed = selectText.trim();
   const cleanSelect = trimmed.replace(/^(DISTINCT|ALL)\s+/i, '').trim();
   const rawCols = splitTopLevelCommas(cleanSelect);
   const selectColumns: SelectColumnSpec[] = [];
+  const windowFunctions: WindowFunctionSpec[] = [];
   let selectAll = false;
 
   for (const rawItem of rawCols) {
@@ -128,7 +241,20 @@ function parseSelectList(selectText: string): {
       continue;
     }
 
-    // Match optional AS alias or trailing identifier alias
+    const winFn = parseWindowFunction(raw);
+    if (winFn) {
+      windowFunctions.push(winFn);
+      selectColumns.push({
+        raw,
+        column: winFn.alias || `${winFn.funcName}()`,
+        alias: winFn.alias,
+        isWildcard: false,
+        isExpression: true,
+        isWindowFunction: true,
+      });
+      continue;
+    }
+
     let exprPart = raw;
     let alias: string | undefined;
 
@@ -137,7 +263,6 @@ function parseSelectList(selectText: string): {
       exprPart = asMatch[1].trim();
       alias = asMatch[2].replace(/^["`]|["`]$/g, '');
     } else {
-      // Check space-separated alias (only if no trailing operator)
       const implicitAliasMatch = raw.match(
         /^([a-zA-Z_][a-zA-Z0-9_.*]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)$/
       );
@@ -199,111 +324,124 @@ function parseSelectList(selectText: string): {
     });
   }
 
-  return { selectAll, selectColumns };
+  return { selectAll, selectColumns, windowFunctions };
 }
 
-function findTopLevelKeywordIndex(
-  sql: string,
-  regex: RegExp,
-  startFrom = 0
-): { index: number; match: RegExpExecArray } | null {
-  let depth = 0;
-  let inSingle = false;
-  let inDouble = false;
+function parseCtes(sql: string): { ctes: CteSpec[]; mainSql: string } {
+  const matchWith = sql.match(/^\s*WITH\s+(RECURSIVE\s+)?/i);
+  if (!matchWith) return { ctes: [], mainSql: sql };
 
-  // Build masked string where quoted strings and parenthesized groups become spaces
-  const chars = sql.split('');
-  for (let i = 0; i < chars.length; i++) {
-    const ch = chars[i];
-    if (!inDouble && ch === "'") {
-      inSingle = !inSingle;
-      chars[i] = ' ';
-      continue;
+  const isRecursive = Boolean(matchWith[1]);
+  let cursor = matchWith[0].length;
+  const ctes: CteSpec[] = [];
+
+  while (cursor < sql.length) {
+    const afterWith = sql.slice(cursor);
+    const cteHead = afterWith.match(/^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s+AS\s*\(/i);
+    if (!cteHead) break;
+
+    const cteName = cteHead[1];
+    const bodyStart = cursor + cteHead[0].length;
+
+    let depth = 1;
+    let i = bodyStart;
+    let inSingle = false;
+    let inDouble = false;
+
+    while (i < sql.length && depth > 0) {
+      const ch = sql[i];
+      if (!inDouble && ch === "'") inSingle = !inSingle;
+      else if (!inSingle && ch === '"') inDouble = !inDouble;
+      else if (!inSingle && !inDouble) {
+        if (ch === '(') depth++;
+        else if (ch === ')') depth--;
+      }
+      i++;
     }
-    if (!inSingle && ch === '"') {
-      inDouble = !inDouble;
-      chars[i] = ' ';
-      continue;
-    }
-    if (inSingle || inDouble) {
-      chars[i] = ' ';
-      continue;
-    }
-    if (ch === '(') {
-      depth++;
-      chars[i] = ' ';
-      continue;
-    }
-    if (ch === ')') {
-      depth = Math.max(0, depth - 1);
-      chars[i] = ' ';
-      continue;
-    }
-    if (depth > 0) {
-      chars[i] = ' ';
+
+    const querySql = sql.slice(bodyStart, i - 1).trim();
+    ctes.push({ name: cteName, querySql, isRecursive });
+
+    while (i < sql.length && /\s/.test(sql[i])) i++;
+    if (sql[i] === ',') {
+      cursor = i + 1;
+    } else {
+      cursor = i;
+      break;
     }
   }
 
-  const masked = chars.join('');
-  const globalRegex = new RegExp(
-    regex.source,
-    regex.flags.includes('g') ? regex.flags : `${regex.flags}g`
-  );
-  globalRegex.lastIndex = startFrom;
-  const match = globalRegex.exec(masked);
-  if (!match) return null;
-  return { index: match.index, match };
+  const mainSql = sql.slice(cursor).trim();
+  return { ctes, mainSql };
 }
 
-function resolveTableAndColumn(
-  token: string,
-  leftTable: string,
-  leftAlias: string,
-  rightTable: string,
-  rightAlias: string
-): { side: 'left' | 'right' | 'unknown'; column: string } {
-  const parts = token.trim().replace(/["`]/g, '').split('.');
-  if (parts.length === 2) {
-    const [prefix, col] = parts;
-    const pLower = prefix.toLowerCase();
-    if (
-      pLower === leftAlias.toLowerCase() ||
-      pLower === leftTable.toLowerCase()
-    ) {
-      return { side: 'left', column: col };
-    }
-    if (
-      pLower === rightAlias.toLowerCase() ||
-      pLower === rightTable.toLowerCase()
-    ) {
-      return { side: 'right', column: col };
-    }
-    return { side: 'unknown', column: col };
+function parseSubqueries(
+  whereClause: string | null,
+  fromTable: string | null,
+  fromAlias: string | null
+): SubquerySpec[] {
+  if (!whereClause) return [];
+  const subqueries: SubquerySpec[] = [];
+
+  const existsMatch = whereClause.match(/\b(NOT\s+EXISTS|EXISTS)\s*\((SELECT[\s\S]+?)\)/i);
+  if (existsMatch) {
+    const isCorrelated = Boolean(
+      (fromAlias && new RegExp(`\\b${fromAlias}\\.`, 'i').test(existsMatch[2])) ||
+      (fromTable && new RegExp(`\\b${fromTable}\\.`, 'i').test(existsMatch[2]))
+    );
+    subqueries.push({
+      type: 'WHERE_EXISTS',
+      operator: existsMatch[1].toUpperCase(),
+      subquerySql: existsMatch[2].trim(),
+      isCorrelated,
+      rawClause: existsMatch[0],
+    });
   }
 
-  // Unqualified column name — infer via schema metadata if unique
-  const col = parts[0];
-  const leftSchema = SCHEMA_METADATA.find(
-    (t) => t.name.toLowerCase() === leftTable.toLowerCase()
-  );
-  const rightSchema = SCHEMA_METADATA.find(
-    (t) => t.name.toLowerCase() === rightTable.toLowerCase()
-  );
-  const inLeft = leftSchema?.columns.some(
-    (c) => c.name.toLowerCase() === col.toLowerCase()
-  );
-  const inRight = rightSchema?.columns.some(
-    (c) => c.name.toLowerCase() === col.toLowerCase()
-  );
+  const inMatch = whereClause.match(/\b([a-zA-Z0-9_.]+)\s+(NOT\s+IN|IN)\s*\((SELECT[\s\S]+?)\)/i);
+  if (inMatch) {
+    const isCorrelated = Boolean(
+      (fromAlias && new RegExp(`\\b${fromAlias}\\.`, 'i').test(inMatch[3])) ||
+      (fromTable && new RegExp(`\\b${fromTable}\\.`, 'i').test(inMatch[3]))
+    );
+    subqueries.push({
+      type: 'WHERE_IN',
+      outerColumn: inMatch[1].trim(),
+      operator: inMatch[2].toUpperCase(),
+      subquerySql: inMatch[3].trim(),
+      isCorrelated,
+      rawClause: inMatch[0],
+    });
+  }
 
-  if (inLeft && !inRight) return { side: 'left', column: col };
-  if (inRight && !inLeft) return { side: 'right', column: col };
-  return { side: 'unknown', column: col };
+  const compMatch = whereClause.match(
+    /\b([a-zA-Z0-9_.]+)\s*(=|>|<|>=|<=|!=)\s*\((SELECT[\s\S]+?)\)/i
+  );
+  if (compMatch) {
+    const isCorrelated = Boolean(
+      (fromAlias && new RegExp(`\\b${fromAlias}\\.`, 'i').test(compMatch[3])) ||
+      (fromTable && new RegExp(`\\b${fromTable}\\.`, 'i').test(compMatch[3]))
+    );
+    subqueries.push({
+      type: 'WHERE_SCALAR',
+      outerColumn: compMatch[1].trim(),
+      operator: compMatch[2].trim(),
+      subquerySql: compMatch[3].trim(),
+      isCorrelated,
+      rawClause: compMatch[0],
+    });
+  }
+
+  return subqueries;
 }
 
 export function parseSqlForVisualization(rawInput: string): ParsedQuery {
   const cleaned = stripSqlComments(rawInput).trim().replace(/;+\s*$/, '').trim();
-  const normalizedSpace = cleaned.replace(/\s+/g, ' ').trim();
+
+  // 1. Detect and separate CTEs
+  const { ctes, mainSql } = parseCtes(cleaned);
+  const targetSql = mainSql || cleaned;
+  const normalizedSpace = targetSql.replace(/\s+/g, ' ').trim();
 
   if (!/^SELECT\b/i.test(normalizedSpace)) {
     return {
@@ -317,13 +455,17 @@ export function parseSqlForVisualization(rawInput: string): ParsedQuery {
       whereClause: null,
       orderByClause: null,
       limitClause: null,
+      windowFunctions: [],
+      ctes,
+      subqueries: [],
+      vizMode: 'single',
       supportedForViz: false,
       vizUnsupportedReason:
         'Step-by-step visualization supports SELECT queries. Non-SELECT statements still execute in SQLite.',
     };
   }
 
-  const fromHit = findTopLevelKeywordIndex(cleaned, /\bFROM\b/i, 6);
+  const fromHit = findTopLevelKeywordIndex(targetSql, /\bFROM\b/i, 6);
   if (!fromHit) {
     return {
       isSelect: true,
@@ -336,44 +478,24 @@ export function parseSqlForVisualization(rawInput: string): ParsedQuery {
       whereClause: null,
       orderByClause: null,
       limitClause: null,
+      windowFunctions: [],
+      ctes,
+      subqueries: [],
+      vizMode: 'single',
       supportedForViz: false,
       vizUnsupportedReason: 'Add a FROM clause to visualize table operations.',
     };
   }
 
-  const selectText = cleaned.slice(6, fromHit.index).trim();
-  const { selectAll, selectColumns } = parseSelectList(selectText);
+  const selectText = targetSql.slice(6, fromHit.index).trim();
+  const { selectAll, selectColumns, windowFunctions } = parseSelectList(selectText);
 
-  const afterFrom = cleaned.slice(fromHit.index + fromHit.match[0].length).trim();
-
-  // Locate optional JOIN, WHERE, GROUP BY, ORDER BY, LIMIT boundaries in afterFrom
+  const afterFrom = targetSql.slice(fromHit.index + fromHit.match[0].length).trim();
   const boundaryRegex =
     /\b(INNER\s+JOIN|LEFT\s+(?:OUTER\s+)?JOIN|RIGHT\s+(?:OUTER\s+)?JOIN|FULL\s+(?:OUTER\s+)?JOIN|CROSS\s+JOIN|JOIN|WHERE|GROUP\s+BY|HAVING|ORDER\s+BY|LIMIT)\b/i;
 
   const firstBoundary = findTopLevelKeywordIndex(afterFrom, boundaryRegex, 0);
-  const fromPart = (firstBoundary
-    ? afterFrom.slice(0, firstBoundary.index)
-    : afterFrom
-  ).trim();
-
-  // Check for comma-separated implicit cross join
-  if (fromPart.includes(',')) {
-    return {
-      isSelect: true,
-      rawSql: rawInput,
-      selectAll,
-      selectColumns,
-      fromTable: null,
-      fromAlias: null,
-      join: null,
-      whereClause: null,
-      orderByClause: null,
-      limitClause: null,
-      supportedForViz: false,
-      vizUnsupportedReason:
-        'Use explicit JOIN syntax (e.g. INNER JOIN or LEFT JOIN) to visualize table joins.',
-    };
-  }
+  const fromPart = (firstBoundary ? afterFrom.slice(0, firstBoundary.index) : afterFrom).trim();
 
   const fromTokens = fromPart.replace(/\s+AS\s+/i, ' ').trim().split(/\s+/);
   const fromTable = fromTokens[0]?.replace(/["`]/g, '') || null;
@@ -382,31 +504,13 @@ export function parseSqlForVisualization(rawInput: string): ParsedQuery {
       ? fromTokens[1].replace(/["`]/g, '')
       : fromTable;
 
-  if (!fromTable) {
-    return {
-      isSelect: true,
-      rawSql: rawInput,
-      selectAll,
-      selectColumns,
-      fromTable: null,
-      fromAlias: null,
-      join: null,
-      whereClause: null,
-      orderByClause: null,
-      limitClause: null,
-      supportedForViz: false,
-      vizUnsupportedReason: 'Could not identify the source table in FROM.',
-    };
-  }
-
   let joinClause: JoinClause | null = null;
   let whereClause: string | null = null;
+  let groupByClause: string | null = null;
+  let havingClause: string | null = null;
   let orderByClause: string | null = null;
   let limitClause: string | null = null;
-  let hasGroupBy = false;
-  let hasMultipleJoins = false;
 
-  // Scan sequential clauses inside afterFrom
   let cursor = firstBoundary ? firstBoundary.index : afterFrom.length;
   while (cursor < afterFrom.length) {
     const currentHit = findTopLevelKeywordIndex(afterFrom, boundaryRegex, cursor);
@@ -419,94 +523,52 @@ export function parseSqlForVisualization(rawInput: string): ParsedQuery {
     const content = afterFrom.slice(contentStart, contentEnd).trim();
 
     if (kw.includes('JOIN')) {
-      if (joinClause) {
-        hasMultipleJoins = true;
-      } else {
-        let joinType: JoinType = 'INNER';
-        if (kw.startsWith('LEFT')) joinType = 'LEFT';
-        else if (kw.startsWith('RIGHT')) joinType = 'RIGHT';
-        else if (kw.startsWith('CROSS')) joinType = 'CROSS';
-        else if (kw.startsWith('FULL')) {
-          return {
-            isSelect: true,
-            rawSql: rawInput,
-            selectAll,
-            selectColumns,
-            fromTable,
-            fromAlias,
-            join: null,
-            whereClause: null,
-            orderByClause: null,
-            limitClause: null,
-            supportedForViz: false,
-            vizUnsupportedReason:
-              'Visualizer currently focuses on INNER JOIN, LEFT JOIN, RIGHT JOIN, and CROSS JOIN.',
-          };
+      let joinType: JoinType = 'INNER';
+      if (kw.startsWith('LEFT')) joinType = 'LEFT';
+      else if (kw.startsWith('RIGHT')) joinType = 'RIGHT';
+      else if (kw.startsWith('CROSS')) joinType = 'CROSS';
+
+      const onMatch = content.match(/^([\s\S]+?)\s+\bON\b\s+([\s\S]+)$/i);
+      const targetPart = (onMatch ? onMatch[1] : content).replace(/\s+AS\s+/i, ' ').trim();
+      const rightTokens = targetPart.split(/\s+/);
+      const rightTable = rightTokens[0]?.replace(/["`]/g, '') || '';
+      const rightAlias =
+        rightTokens[1] && !SQL_KEYWORDS.has(rightTokens[1].toUpperCase())
+          ? rightTokens[1].replace(/["`]/g, '')
+          : rightTable;
+      const rawOn = onMatch ? onMatch[2].trim() : '';
+
+      let leftColumn = '';
+      let rightColumn = '';
+
+      if (rawOn) {
+        const eqMatch = rawOn.match(
+          /^([a-zA-Z_][a-zA-Z0-9_.]*)\s*=\s*([a-zA-Z_][a-zA-Z0-9_.]*)$/
+        );
+        if (eqMatch) {
+          const p1 = eqMatch[1].split('.').pop() || '';
+          const p2 = eqMatch[2].split('.').pop() || '';
+          leftColumn = p1;
+          rightColumn = p2;
         }
-
-        const onMatch = content.match(/^([\s\S]+?)\s+\bON\b\s+([\s\S]+)$/i);
-        const targetPart = (onMatch ? onMatch[1] : content)
-          .replace(/\s+AS\s+/i, ' ')
-          .trim();
-        const rightTokens = targetPart.split(/\s+/);
-        const rightTable = rightTokens[0]?.replace(/["`]/g, '') || '';
-        const rightAlias =
-          rightTokens[1] && !SQL_KEYWORDS.has(rightTokens[1].toUpperCase())
-            ? rightTokens[1].replace(/["`]/g, '')
-            : rightTable;
-        const rawOn = onMatch ? onMatch[2].trim() : '';
-
-        let leftColumn = '';
-        let rightColumn = '';
-
-        if (rawOn) {
-          const eqMatch = rawOn.match(
-            /^([a-zA-Z_][a-zA-Z0-9_.]*)\s*=\s*([a-zA-Z_][a-zA-Z0-9_.]*)$/
-          );
-          if (eqMatch && fromAlias) {
-            const sideA = resolveTableAndColumn(
-              eqMatch[1],
-              fromTable,
-              fromAlias,
-              rightTable,
-              rightAlias
-            );
-            const sideB = resolveTableAndColumn(
-              eqMatch[2],
-              fromTable,
-              fromAlias,
-              rightTable,
-              rightAlias
-            );
-
-            if (sideA.side === 'left' && sideB.side === 'right') {
-              leftColumn = sideA.column;
-              rightColumn = sideB.column;
-            } else if (sideA.side === 'right' && sideB.side === 'left') {
-              leftColumn = sideB.column;
-              rightColumn = sideA.column;
-            } else {
-              leftColumn = sideA.column;
-              rightColumn = sideB.column;
-            }
-          }
-        }
-
-        joinClause = {
-          type: joinType,
-          leftTable: fromTable,
-          leftAlias: fromAlias || fromTable,
-          rightTable,
-          rightAlias,
-          leftColumn,
-          rightColumn,
-          rawOn,
-        };
       }
+
+      joinClause = {
+        type: joinType,
+        leftTable: fromTable || '',
+        leftAlias: fromAlias || fromTable || '',
+        rightTable,
+        rightAlias,
+        leftColumn,
+        rightColumn,
+        rawOn,
+      };
     } else if (kw === 'WHERE') {
       whereClause = content;
     } else if (kw === 'GROUP BY') {
-      hasGroupBy = true;
+      groupByClause = content;
+    } else if (kw === 'HAVING') {
+      havingClause = content;
     } else if (kw === 'ORDER BY') {
       orderByClause = content;
     } else if (kw === 'LIMIT') {
@@ -516,76 +578,26 @@ export function parseSqlForVisualization(rawInput: string): ParsedQuery {
     cursor = contentEnd;
   }
 
-  if (hasMultipleJoins) {
-    return {
-      isSelect: true,
-      rawSql: rawInput,
-      selectAll,
-      selectColumns,
-      fromTable,
-      fromAlias,
-      join: joinClause,
-      whereClause,
-      orderByClause,
-      limitClause,
-      supportedForViz: false,
-      vizUnsupportedReason:
-        'Side-by-side join animation visualizes 2-table joins; the query still executed cleanly in SQLite.',
-    };
-  }
+  const subqueries = parseSubqueries(whereClause, fromTable, fromAlias);
 
-  if (hasGroupBy) {
-    return {
-      isSelect: true,
-      rawSql: rawInput,
-      selectAll,
-      selectColumns,
-      fromTable,
-      fromAlias,
-      join: joinClause,
-      whereClause,
-      orderByClause,
-      limitClause,
-      supportedForViz: false,
-      vizUnsupportedReason:
-        'Aggregated GROUP BY results are shown in the Results Grid below; row-level animation applies to non-grouped queries.',
-    };
+  // Determine Primary Viz Mode
+  let vizMode: VizMode = 'single';
+  if (ctes.length > 0) {
+    vizMode = 'cte';
+  } else if (windowFunctions.length > 0) {
+    vizMode = 'window';
+  } else if (subqueries.length > 0) {
+    vizMode = 'subquery';
+  } else if (joinClause) {
+    vizMode = 'join';
   }
 
   const knownTables = new Set(SCHEMA_METADATA.map((t) => t.name.toLowerCase()));
-  if (!knownTables.has(fromTable.toLowerCase())) {
-    return {
-      isSelect: true,
-      rawSql: rawInput,
-      selectAll,
-      selectColumns,
-      fromTable,
-      fromAlias,
-      join: joinClause,
-      whereClause,
-      orderByClause,
-      limitClause,
-      supportedForViz: false,
-      vizUnsupportedReason: `Table "${fromTable}" is a custom or system table; step visualization works on "users" and "departments".`,
-    };
+  for (const c of ctes) {
+    knownTables.add(c.name.toLowerCase());
   }
 
-  if (joinClause && !knownTables.has(joinClause.rightTable.toLowerCase())) {
-    return {
-      isSelect: true,
-      rawSql: rawInput,
-      selectAll,
-      selectColumns,
-      fromTable,
-      fromAlias,
-      join: joinClause,
-      whereClause,
-      orderByClause,
-      limitClause,
-      supportedForViz: false,
-      vizUnsupportedReason: `Joined table "${joinClause.rightTable}" is not in the core schema.`,
-    };
-  }
+  const isCustomTable = fromTable && !knownTables.has(fromTable.toLowerCase());
 
   return {
     isSelect: true,
@@ -596,8 +608,17 @@ export function parseSqlForVisualization(rawInput: string): ParsedQuery {
     fromAlias,
     join: joinClause,
     whereClause,
+    groupByClause,
+    havingClause,
     orderByClause,
     limitClause,
-    supportedForViz: true,
+    windowFunctions,
+    ctes,
+    subqueries,
+    vizMode,
+    supportedForViz: !isCustomTable,
+    vizUnsupportedReason: isCustomTable
+      ? `Table "${fromTable}" is not in the active schemas.`
+      : undefined,
   };
 }

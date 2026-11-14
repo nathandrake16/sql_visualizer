@@ -26,6 +26,9 @@ import {
 } from 'lucide-react';
 import { VizSnapshot, VizSourceRow } from '@/lib/buildVizPlan';
 import { SqlValue, VizStep } from '@/types/sql';
+import { WindowVisualizer } from '@/components/WindowVisualizer';
+import { CteVisualizer } from '@/components/CteVisualizer';
+import { SubqueryVisualizer } from '@/components/SubqueryVisualizer';
 
 interface QueryVisualizerProps {
   snapshot: VizSnapshot | null;
@@ -99,6 +102,30 @@ interface ComputedLine {
 }
 
 export function QueryVisualizer({ snapshot, replayNonce }: QueryVisualizerProps) {
+  if (snapshot?.mode === 'window' && snapshot.windowSnapshot) {
+    return (
+      <section className="rounded-xl border border-slate-800/90 bg-[#0E1420] p-4 shadow-sm">
+        <WindowVisualizer snapshot={snapshot.windowSnapshot} replayNonce={replayNonce} />
+      </section>
+    );
+  }
+
+  if (snapshot?.mode === 'cte' && snapshot.cteSnapshot) {
+    return (
+      <section className="rounded-xl border border-slate-800/90 bg-[#0E1420] p-4 shadow-sm">
+        <CteVisualizer snapshot={snapshot.cteSnapshot} />
+      </section>
+    );
+  }
+
+  if (snapshot?.mode === 'subquery' && snapshot.subquerySnapshot) {
+    return (
+      <section className="rounded-xl border border-slate-800/90 bg-[#0E1420] p-4 shadow-sm">
+        <SubqueryVisualizer snapshot={snapshot.subquerySnapshot} />
+      </section>
+    );
+  }
+
   return <QueryVisualizerInner key={replayNonce} snapshot={snapshot} />;
 }
 

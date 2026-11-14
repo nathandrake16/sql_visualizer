@@ -182,11 +182,11 @@ export function SqlWorkbench() {
                   SQL Lens
                 </h1>
                 <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sky-300">
-                  Visual MVP
+                  50 FAANG Problems · Visualizer
                 </span>
               </div>
               <p className="text-[11px] text-slate-400">
-                Hands-on SQL practice with step-by-step relational join visualization
+                FAANG interview practice with visual mental models for Window Functions, CTEs, Subqueries & Joins
               </p>
             </div>
           </div>
