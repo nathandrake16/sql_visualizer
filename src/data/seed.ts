@@ -313,7 +313,8 @@ INSERT INTO songs (id, title, artist_id, release_year, duration_sec) VALUES
   (105, 'Save Your Tears', 2, 2020, 215),
   (106, 'Anti-Hero', 3, 2022, 200),
   (107, 'Cruel Summer', 3, 2019, 178),
-  (108, 'Bad Guy', 4, 2019, 194);
+  (108, 'Bad Guy', 4, 2019, 194),
+  (109, 'Ocean Eyes', 4, 2016, 200);
 
 INSERT INTO playback_history (id, user_id, song_id, stream_date, stream_count) VALUES
   (1, 10, 104, '2024-01-01', 5200),

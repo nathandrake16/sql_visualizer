@@ -127,6 +127,11 @@ export type ChallengeCategory =
 
 export type ProblemDomain = 'core' | 'ecommerce' | 'streaming' | 'fintech' | 'social';
 
+export interface ExampleOutput {
+  columns: string[];
+  rows: SqlValue[][];
+}
+
 export interface Challenge {
   id: string;
   number: number;
@@ -139,9 +144,12 @@ export interface Challenge {
   conceptSummary: string;
   conceptTip: string;
   prompt: string;
+  requirements?: string[];
+  exampleOutput?: ExampleOutput;
   hint: string;
   starterSql: string;
   solutionSql: string;
+  solutionExplanation: string;
   expectedColumns?: string[];
   orderMatters?: boolean;
   validateQuery?: (result: QueryResult, parsed: ParsedQuery | null) => {

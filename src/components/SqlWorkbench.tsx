@@ -46,7 +46,11 @@ export function SqlWorkbench() {
   const didInitialRunRef = useRef(false);
 
   const runSql = useCallback(
-    (overrideSql?: string, challengeIdOverride?: string | null) => {
+    (
+      overrideSql?: string,
+      challengeIdOverride?: string | null,
+      options?: { skipValidation?: boolean }
+    ) => {
       const targetSql = overrideSql ?? sqlText;
       const targetChallengeId =
         challengeIdOverride !== undefined
@@ -66,6 +70,12 @@ export function SqlWorkbench() {
       setQueryNotice(outcome.isNonSelectNotice);
       setVizSnapshot(outcome.vizSnapshot);
       setReplayNonce((n) => n + 1);
+
+      // Never auto-solve or evaluate validation on select, initial boot, or reset
+      if (options?.skipValidation) {
+        setValidationState(null);
+        return;
+      }
 
       const challenge = CHALLENGES.find((c) => c.id === targetChallengeId);
       if (challenge?.validateQuery) {
@@ -88,11 +98,13 @@ export function SqlWorkbench() {
     [activeChallengeId, executeQuery, sqlText]
   );
 
-  // Run starter query once when SQLite WASM becomes ready
+  // Run starter query once when SQLite WASM becomes ready (without auto-solving)
   useEffect(() => {
     if (isReady && !didInitialRunRef.current) {
       didInitialRunRef.current = true;
-      runSql(initialChallenge.starterSql, INITIAL_CHALLENGE_ID);
+      runSql(initialChallenge.starterSql, INITIAL_CHALLENGE_ID, {
+        skipValidation: true,
+      });
     }
   }, [isReady, initialChallenge.starterSql, runSql]);
 
@@ -106,9 +118,9 @@ export function SqlWorkbench() {
         if (!sqlText.trim()) {
           const freeSql = `SELECT u.name, u.role, d.name AS department\nFROM users u\nLEFT JOIN departments d\n  ON u.department_id = d.id;`;
           setSqlText(freeSql);
-          if (isReady) runSql(freeSql, null);
+          if (isReady) runSql(freeSql, null, { skipValidation: true });
         } else if (isReady) {
-          runSql(sqlText, null);
+          runSql(sqlText, null, { skipValidation: true });
         }
         return;
       }
@@ -117,7 +129,8 @@ export function SqlWorkbench() {
       if (!found) return;
       setSqlText(found.starterSql);
       if (isReady) {
-        runSql(found.starterSql, found.id);
+        // Run without auto-solving on select
+        runSql(found.starterSql, found.id, { skipValidation: true });
       }
     },
     [isReady, runSql, sqlText]
@@ -127,18 +140,20 @@ export function SqlWorkbench() {
     (solutionSql: string) => {
       setSqlText(solutionSql);
       if (isReady) {
-        runSql(solutionSql);
+        // Load solution into editor and render its visualization, but require user to click "Run Query" or Ctrl+Enter to submit
+        runSql(solutionSql, activeChallengeId, { skipValidation: true });
       }
     },
-    [isReady, runSql]
+    [activeChallengeId, isReady, runSql]
   );
 
   const handleResetStarter = useCallback(() => {
     const found = CHALLENGES.find((c) => c.id === activeChallengeId);
     if (!found) return;
     setSqlText(found.starterSql);
+    setValidationState(null);
     if (isReady) {
-      runSql(found.starterSql, found.id);
+      runSql(found.starterSql, found.id, { skipValidation: true });
     }
   }, [activeChallengeId, isReady, runSql]);
 
@@ -214,7 +229,7 @@ export function SqlWorkbench() {
       )}
 
       {/* Main Split-Screen Workspace */}
-      <main className="mx-auto grid w-full max-w-[1600px] flex-1 grid-cols-1 gap-4 p-4 sm:p-6 lg:grid-cols-[370px_1fr]">
+      <main className="mx-auto grid w-full max-w-[1680px] flex-1 grid-cols-1 gap-5 p-4 sm:p-6 lg:grid-cols-[420px_1fr] xl:grid-cols-[460px_1fr]">
         {/* Left Panel: Tutorial, Practice Question & Schema Cards */}
         <Sidebar
           challenges={CHALLENGES}
