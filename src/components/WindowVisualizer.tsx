@@ -92,11 +92,11 @@ function WindowVisualizerInner({
       {!hideTopControls && (
         <>
           {/* Function Spec Banner */}
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-500/30 bg-[#0A0F1A] px-3.5 py-2.5">
+          <div className="neu-panel flex flex-wrap items-center justify-between gap-2 rounded-xl px-4 py-3">
             <div className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-sky-400" />
-              <span className="font-semibold text-slate-100">Window Function:</span>
-              <code className="rounded bg-sky-500/15 px-2 py-0.5 text-xs text-sky-300">
+              <span className="font-bold text-slate-100">Window Function:</span>
+              <code className="neu-badge rounded-lg px-2.5 py-0.5 text-xs text-sky-300">
                 {win.funcName}({win.funcArgs.join(', ')})
               </code>
               {win.alias && (
@@ -110,7 +110,7 @@ function WindowVisualizerInner({
               <button
                 type="button"
                 onClick={() => setInternalStep((s) => (s < 4 ? s + 1 : 1))}
-                className="inline-flex items-center gap-1 rounded border border-slate-700 bg-slate-800 px-2.5 py-1 text-[11px] text-slate-200 hover:border-slate-600"
+                className="neu-btn inline-flex items-center gap-1 rounded-xl px-3 py-1.5 text-[11px] font-semibold text-slate-200"
               >
                 {activeStep === 4 ? (
                   <>
@@ -132,15 +132,15 @@ function WindowVisualizerInner({
                 key={s.id}
                 type="button"
                 onClick={() => setInternalStep(s.id)}
-                className={`rounded-lg border p-2 text-left transition ${
+                className={`rounded-xl p-2.5 text-left transition ${
                   activeStep === s.id
-                    ? 'border-sky-500 bg-sky-500/15 text-white shadow-sm'
+                    ? 'neu-btn-active border-sky-500 text-white shadow-sm'
                     : activeStep > s.id
-                      ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300'
-                      : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700'
+                      ? 'neu-pill border-emerald-500/30 text-emerald-300'
+                      : 'neu-pill text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <div className="font-semibold text-[11px] flex items-center justify-between">
+                <div className="font-bold text-[11px] flex items-center justify-between">
                   <span>{s.label}</span>
                   {activeStep > s.id && <CheckCircle2 className="h-3 w-3 text-emerald-400" />}
                 </div>
@@ -152,7 +152,7 @@ function WindowVisualizerInner({
       )}
 
       {/* Explanatory Caption */}
-      <div className="rounded-lg border border-slate-800/80 bg-[#0B101B] px-3.5 py-2 text-[11px] text-slate-300">
+      <div className="neu-panel rounded-xl px-4 py-2.5 text-[11px] text-slate-300">
         {activeStep === 1 && (
           <div>
             <span className="font-semibold text-sky-300">Phase 1 (Partitioning): </span>
@@ -198,23 +198,23 @@ function WindowVisualizerInner({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.25, delay: pIdx * 0.08 }}
-                className={`overflow-hidden rounded-xl border ${theme.border} bg-[#0A0F1A] shadow-sm`}
+                className={`neu-card overflow-hidden rounded-xl`}
               >
                 {/* Partition Header */}
-                <div className={`flex items-center justify-between border-b border-slate-800 px-3 py-2 ${theme.headerBg}`}>
+                <div className={`flex items-center justify-between border-b border-white/[0.04] px-3.5 py-2.5 ${theme.headerBg}`}>
                   <div className="flex items-center gap-2">
                     <Layers className="h-3.5 w-3.5" />
-                    <span className="font-semibold text-xs truncate">
+                    <span className="font-bold text-xs truncate">
                       Partition: {part.displayKey}
                     </span>
                   </div>
-                  <span className="rounded bg-slate-900/60 px-1.5 py-0.5 text-[10px]">
+                  <span className="neu-badge rounded px-2 py-0.5 text-[10px]">
                     {part.rows.length} row(s)
                   </span>
                 </div>
 
                 {/* Partition Rows */}
-                <div className="divide-y divide-slate-800/60 p-1.5">
+                <div className="divide-y divide-white/[0.03] p-1.5">
                   {part.rows.map((row) => {
                     const isPointerSource = part.rows.some((other) => other.leadLagPointerRowId === row.rowId);
                     return (

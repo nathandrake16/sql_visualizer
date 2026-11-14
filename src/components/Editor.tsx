@@ -70,26 +70,26 @@ export function Editor({
   };
 
   return (
-    <section className="flex flex-col overflow-hidden rounded-xl border border-slate-800/90 bg-[#0E1420] shadow-sm">
+    <section className="neu-card flex flex-col overflow-hidden rounded-2xl">
       {/* Editor Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 bg-[#0B101B] px-3.5 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.04] bg-[#0c1320] px-4 py-3">
         <div className="flex items-center gap-2.5">
           <div className="flex items-center gap-1.5">
             <Terminal className="h-4 w-4 text-sky-400" />
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-200">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
               SQL Query Editor
             </span>
           </div>
           <span
-            className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+            className={`neu-badge inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium ${
               isDbReady
-                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                ? 'border-emerald-500/30 text-emerald-300'
+                : 'border-amber-500/30 text-amber-300'
             }`}
           >
             <span
               className={`h-1.5 w-1.5 rounded-full ${
-                isDbReady ? 'bg-emerald-400' : 'animate-pulse bg-amber-400'
+                isDbReady ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'animate-pulse bg-amber-400'
               }`}
             />
             {isDbReady ? 'SQLite WASM Ready' : 'Loading SQLite...'}
@@ -102,7 +102,7 @@ export function Editor({
               type="button"
               onClick={onResetStarter}
               title="Reset editor to starter query"
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-700/80 bg-slate-900/80 px-2.5 py-1.5 text-xs font-medium text-slate-300 transition hover:border-slate-600 hover:text-white"
+              className="neu-btn inline-flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-300"
             >
               <RotateCcw className="h-3.5 w-3.5 text-slate-400" />
               Reset Code
@@ -113,7 +113,7 @@ export function Editor({
             type="button"
             onClick={onResetDb}
             title="Restore initial seed tables in sql.js"
-            className="inline-flex items-center gap-1 rounded-lg border border-slate-700/80 bg-slate-900/80 px-2.5 py-1.5 text-xs font-medium text-slate-300 transition hover:border-slate-600 hover:text-white"
+            className="neu-btn inline-flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-300"
           >
             <RefreshCw className="h-3.5 w-3.5 text-slate-400" />
             Reset DB
@@ -124,7 +124,7 @@ export function Editor({
             onClick={onReplayViz}
             disabled={!isDbReady}
             title="Replay step-by-step query visualization"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/40 bg-violet-500/10 px-3 py-1.5 text-xs font-semibold text-violet-200 transition hover:bg-violet-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+            className="neu-btn inline-flex items-center gap-1.5 rounded-xl border border-violet-500/20 px-3 py-1.5 text-xs font-semibold text-violet-300 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Sparkles className="h-3.5 w-3.5 text-violet-300" />
             Visualize
@@ -134,11 +134,11 @@ export function Editor({
             type="button"
             onClick={() => onRun()}
             disabled={!isDbReady}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-3.5 py-1.5 text-xs font-semibold text-slate-950 shadow-[0_0_20px_rgba(56,189,248,0.28)] transition hover:bg-sky-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+            className="neu-btn-primary inline-flex items-center gap-1.5 rounded-xl px-4 py-1.5 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Play className="h-3.5 w-3.5 fill-current" />
             Run Query
-            <kbd className="ml-1 hidden rounded bg-slate-950/20 px-1 py-0.5 font-mono text-[10px] font-bold sm:inline">
+            <kbd className="ml-1 hidden rounded bg-slate-950/30 px-1 py-0.5 font-mono text-[10px] font-bold sm:inline">
               Ctrl+↵
             </kbd>
           </button>
@@ -147,7 +147,7 @@ export function Editor({
 
       {/* CodeMirror Surface */}
       <div
-        className="relative bg-[#0A0F1A] text-sm"
+        className="neu-inset relative m-2.5 rounded-xl p-1 text-sm"
         onKeyDownCapture={handleKeyDownCapture}
       >
         <CodeMirror
@@ -164,7 +164,7 @@ export function Editor({
             autocompletion: true,
             closeBrackets: true,
           }}
-          className="text-[13px] [&_.cm-editor]:!bg-[#0A0F1A] [&_.cm-gutters]:!border-slate-800/80 [&_.cm-gutters]:!bg-[#0A0F1A] [&_.cm-scroller]:font-mono"
+          className="text-[13px] [&_.cm-editor]:!bg-transparent [&_.cm-gutters]:!border-white/[0.04] [&_.cm-gutters]:!bg-transparent [&_.cm-scroller]:font-mono"
         />
       </div>
     </section>

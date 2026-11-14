@@ -1,10 +1,14 @@
 @import "tailwindcss";
 
 :root {
-  --bg-canvas: #080c14;
-  --bg-surface: #0e1420;
-  --bg-elevated: #141c2c;
-  --border-subtle: rgba(148, 163, 184, 0.14);
+  --bg-canvas: #090e17;
+  --bg-surface: #0f1624;
+  --bg-elevated: #131c2d;
+  --border-subtle: rgba(255, 255, 255, 0.05);
+
+  --neu-dark: rgba(0, 0, 0, 0.65);
+  --neu-light: rgba(255, 255, 255, 0.045);
+  --neu-light-strong: rgba(255, 255, 255, 0.08);
 }
 
 html,
@@ -19,6 +23,142 @@ code,
 pre,
 .font-mono {
   font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+}
+
+/* =========================================================================
+   NEUMORPHIC DESIGN SYSTEM (DARK SOFT UI)
+   ========================================================================= */
+
+/* 1. Neumorphic Extruded Cards & Panels */
+.neu-card {
+  background: linear-gradient(145deg, #121a29, #0e1522);
+  box-shadow: 7px 7px 18px var(--neu-dark), -5px -5px 14px var(--neu-light);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.neu-panel {
+  background: linear-gradient(145deg, #111927, #0d1420);
+  box-shadow: 6px 6px 16px var(--neu-dark), -4px -4px 12px var(--neu-light);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+/* 2. Neumorphic Raised Badges & Mini Cards */
+.neu-raised-sm {
+  background: linear-gradient(145deg, #141d2e, #101726);
+  box-shadow: 3px 3px 8px var(--neu-dark), -2px -2px 6px var(--neu-light);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* 3. Neumorphic Debossed / Inset Wells (Inputs, Code blocks, Trays) */
+.neu-inset {
+  background-color: #070b13;
+  box-shadow: inset 4px 4px 9px rgba(0, 0, 0, 0.7), inset -3px -3px 8px var(--neu-light);
+  border: 1px solid rgba(0, 0, 0, 0.45);
+}
+
+.neu-inset-tray {
+  background-color: #070b13;
+  box-shadow: inset 3px 3px 7px rgba(0, 0, 0, 0.75), inset -2px -2px 5px var(--neu-light);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+/* 4. Neumorphic Tactile Buttons */
+.neu-btn {
+  background: linear-gradient(145deg, #152033, #0f1625);
+  box-shadow: 4px 4px 10px var(--neu-dark), -3px -3px 8px var(--neu-light);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.neu-btn:hover:not(:disabled) {
+  background: linear-gradient(145deg, #19263c, #111a2b);
+  box-shadow: 5px 5px 14px var(--neu-dark), -4px -4px 10px var(--neu-light-strong);
+  transform: translateY(-1px);
+}
+
+.neu-btn:active:not(:disabled),
+.neu-btn-active {
+  background: #080d16;
+  box-shadow: inset 3px 3px 7px rgba(0, 0, 0, 0.75), inset -2px -2px 5px var(--neu-light);
+  border-color: rgba(56, 189, 248, 0.35);
+  transform: translateY(1px);
+}
+
+/* 5. Primary Neumorphic Glowing Button */
+.neu-btn-primary {
+  background: linear-gradient(145deg, #0284c7, #0369a1);
+  box-shadow: 5px 5px 15px var(--neu-dark), -3px -3px 10px rgba(56, 189, 248, 0.2), 0 0 20px rgba(56, 189, 248, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  transition: all 0.18s ease;
+}
+
+.neu-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(145deg, #0ea5e9, #0284c7);
+  box-shadow: 6px 6px 18px var(--neu-dark), -4px -4px 12px rgba(56, 189, 248, 0.35), 0 0 26px rgba(56, 189, 248, 0.4);
+  transform: translateY(-1px);
+}
+
+.neu-btn-primary:active:not(:disabled) {
+  background: #0284c7;
+  box-shadow: inset 3px 3px 6px rgba(0, 0, 0, 0.6), inset -2px -2px 5px rgba(255, 255, 255, 0.12);
+  transform: translateY(1px);
+}
+
+.neu-btn-violet {
+  background: linear-gradient(145deg, #7c3aed, #6d28d9);
+  box-shadow: 4px 4px 12px var(--neu-dark), -3px -3px 8px rgba(167, 139, 250, 0.2), 0 0 16px rgba(139, 92, 246, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  transition: all 0.18s ease;
+}
+
+.neu-btn-violet:hover:not(:disabled) {
+  background: linear-gradient(145deg, #8b5cf6, #7c3aed);
+  box-shadow: 5px 5px 15px var(--neu-dark), -4px -4px 10px rgba(167, 139, 250, 0.35), 0 0 22px rgba(139, 92, 246, 0.35);
+  transform: translateY(-1px);
+}
+
+.neu-btn-violet:active:not(:disabled) {
+  background: #6d28d9;
+  box-shadow: inset 3px 3px 6px rgba(0, 0, 0, 0.6), inset -2px -2px 5px rgba(255, 255, 255, 0.12);
+  transform: translateY(1px);
+}
+
+.neu-badge {
+  background: #090f19;
+  box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.6), inset -1px -1px 3px var(--neu-light);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* 6. Neumorphic Segmented Pill */
+.neu-pill {
+  background: linear-gradient(145deg, #121a29, #0e1522);
+  box-shadow: 3px 3px 7px var(--neu-dark), -2px -2px 5px var(--neu-light);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  transition: all 0.15s ease;
+}
+
+.neu-pill:hover {
+  background: linear-gradient(145deg, #162033, #101826);
+  box-shadow: 4px 4px 10px var(--neu-dark), -3px -3px 7px var(--neu-light-strong);
+}
+
+.neu-pill-active {
+  background: #070c14 !important;
+  box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.7), inset -2px -2px 4px var(--neu-light) !important;
+  border-color: rgba(56, 189, 248, 0.4) !important;
+  color: #38bdf8 !important;
+}
+
+/* 7. Neumorphic Table Row Hover */
+.neu-table-row {
+  transition: all 0.15s ease;
+}
+
+.neu-table-row:hover {
+  background: linear-gradient(90deg, rgba(18, 26, 41, 0.6), rgba(22, 32, 51, 0.7));
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.04), inset 0 -1px 0 rgba(0, 0, 0, 0.4);
 }
 
 .null-hatch {
@@ -38,11 +178,11 @@ pre,
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.4);
+  background: #070b13;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.24);
+  background: rgba(148, 163, 184, 0.22);
   border-radius: 9999px;
 }
 

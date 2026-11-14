@@ -23,7 +23,7 @@ export function CteVisualizer({ snapshot }: CteVisualizerProps) {
   return (
     <div className="flex flex-col gap-4 font-mono text-xs">
       {/* CTE Pipeline Flowchart Header */}
-      <div className="rounded-xl border border-slate-800 bg-[#0A0F1A] p-3.5">
+      <div className="neu-panel rounded-xl p-3.5">
         <div className="mb-2.5 flex items-center justify-between text-[11px]">
           <div className="flex items-center gap-2 font-semibold text-slate-200">
             <Layers className="h-4 w-4 text-violet-400" />
@@ -41,10 +41,10 @@ export function CteVisualizer({ snapshot }: CteVisualizerProps) {
                 <button
                   type="button"
                   onClick={() => setSelectedNodeIdx(idx)}
-                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-left transition ${
+                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-left transition ${
                     isSelected
-                      ? 'border-violet-500 bg-violet-500/20 text-white shadow-[0_0_15px_rgba(167,139,250,0.2)]'
-                      : 'border-slate-800 bg-slate-900/70 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                      ? 'neu-btn-active border-violet-500 text-white shadow-[0_0_15px_rgba(167,139,250,0.25)]'
+                      : 'neu-btn text-slate-400 hover:text-slate-200'
                   }`}
                 >
                   <GitCommit className={`h-4 w-4 ${isSelected ? 'text-violet-300' : 'text-slate-500'}`} />
@@ -64,7 +64,7 @@ export function CteVisualizer({ snapshot }: CteVisualizerProps) {
           <ArrowRight className="h-4 w-4 shrink-0 text-slate-600" />
 
           {/* Final Query Output Pill */}
-          <div className="flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-emerald-200">
+          <div className="neu-raised-sm flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-emerald-200">
             <Sparkles className="h-4 w-4 text-emerald-400" />
             <div>
               <div className="font-bold text-[11px]">Main Query</div>
@@ -81,16 +81,16 @@ export function CteVisualizer({ snapshot }: CteVisualizerProps) {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2 }}
-          className="overflow-hidden rounded-xl border border-violet-500/30 bg-[#0E1420] shadow-sm"
+          className="neu-card overflow-hidden rounded-xl"
         >
           {/* Virtual Table Toolbar */}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-[#0B101B] px-3.5 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.04] bg-[#0c1320] px-4 py-2.5">
             <div className="flex items-center gap-2">
               <TableProperties className="h-4 w-4 text-violet-400" />
               <span className="font-semibold text-xs text-white">
                 Virtual Table: <span className="text-violet-300">{activeNode.name}</span>
               </span>
-              <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400">
+              <span className="neu-badge rounded px-2 py-0.5 text-[10px] text-slate-400">
                 {activeNode.rowCount} row(s)
               </span>
             </div>
@@ -99,7 +99,7 @@ export function CteVisualizer({ snapshot }: CteVisualizerProps) {
               <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
                 <span>Reads from:</span>
                 {activeNode.upstreamCtes.map((up) => (
-                  <span key={up} className="rounded bg-violet-500/15 px-1.5 py-0.5 font-bold text-violet-300">
+                  <span key={up} className="neu-badge rounded px-1.5 py-0.5 font-bold text-violet-300">
                     {up}
                   </span>
                 ))}
@@ -108,7 +108,7 @@ export function CteVisualizer({ snapshot }: CteVisualizerProps) {
           </div>
 
           {/* SQL Snippet Definition */}
-          <div className="border-b border-slate-800/80 bg-[#080C14] p-3 text-[11px] text-slate-300">
+          <div className="neu-inset m-2.5 rounded-lg p-3 text-[11px] text-slate-300">
             <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
               CTE Definition:
             </div>
@@ -118,11 +118,11 @@ export function CteVisualizer({ snapshot }: CteVisualizerProps) {
           </div>
 
           {/* Virtual Table Data Grid */}
-          <div className="max-h-60 overflow-auto">
+          <div className="neu-inset m-2.5 max-h-60 overflow-auto rounded-xl p-1">
             <table className="w-full border-collapse text-left text-xs">
-              <thead className="sticky top-0 bg-[#0B101B] border-b border-slate-800 text-slate-400 text-[11px]">
+              <thead className="sticky top-0 bg-[#0c1320] border-b border-white/[0.05] text-slate-400 text-[11px]">
                 <tr>
-                  <th className="w-10 px-3 py-2 text-center text-slate-600 font-normal">#</th>
+                  <th className="w-10 px-3 py-2 text-center text-slate-500 font-normal">#</th>
                   {activeNode.columns.map((c) => (
                     <th key={c} className="px-3 py-2 font-semibold text-slate-300">
                       {c}
@@ -130,7 +130,7 @@ export function CteVisualizer({ snapshot }: CteVisualizerProps) {
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60">
+              <tbody className="divide-y divide-white/[0.03]">
                 {activeNode.rows.length === 0 ? (
                   <tr>
                     <td colSpan={activeNode.columns.length + 1} className="p-4 text-center text-slate-500">
@@ -139,8 +139,8 @@ export function CteVisualizer({ snapshot }: CteVisualizerProps) {
                   </tr>
                 ) : (
                   activeNode.rows.map((row, rIdx) => (
-                    <tr key={rIdx} className="hover:bg-slate-800/40">
-                      <td className="px-3 py-2 text-center text-slate-600 text-[10px]">{rIdx + 1}</td>
+                    <tr key={rIdx} className="neu-table-row transition-colors">
+                      <td className="px-3 py-2 text-center text-slate-500 text-[10px]">{rIdx + 1}</td>
                       {row.map((val, cIdx) => (
                         <td key={cIdx} className="px-3 py-2 text-slate-200">
                           {formatCell(val)}

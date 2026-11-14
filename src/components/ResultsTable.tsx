@@ -12,18 +12,18 @@ interface ResultsTableProps {
 
 export function ResultsTable({ result, error, notice }: ResultsTableProps) {
   return (
-    <section className="flex flex-col overflow-hidden rounded-xl border border-slate-800/90 bg-[#0E1420] shadow-sm">
-      <div className="flex items-center justify-between border-b border-slate-800/80 bg-[#0B101B] px-3.5 py-2.5">
+    <section className="neu-card flex flex-col overflow-hidden rounded-2xl">
+      <div className="flex items-center justify-between border-b border-white/[0.04] bg-[#0c1320] px-4 py-3">
         <div className="flex items-center gap-2">
           <TableProperties className="h-4 w-4 text-emerald-400" />
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-200">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
             Query Output
           </span>
         </div>
 
         {result && !error && (
           <div className="flex items-center gap-3 text-[11px] text-slate-400">
-            <span className="rounded-md border border-slate-800 bg-slate-900/90 px-2 py-0.5 font-mono text-slate-300">
+            <span className="neu-badge rounded-lg px-2.5 py-1 font-mono text-slate-300">
               {result.rowCount} {result.rowCount === 1 ? 'row' : 'rows'}
             </span>
             <span className="inline-flex items-center gap-1 font-mono text-slate-400">
@@ -35,7 +35,7 @@ export function ResultsTable({ result, error, notice }: ResultsTableProps) {
       </div>
 
       {error ? (
-        <div className="m-3 flex items-start gap-3 rounded-lg border border-rose-500/40 bg-rose-500/10 p-3.5 text-xs text-rose-200">
+        <div className="m-3.5 flex items-start gap-3 rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 text-xs text-rose-200">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
           <div>
             <div className="font-semibold text-rose-300">SQL Syntax or Execution Error</div>
@@ -48,7 +48,7 @@ export function ResultsTable({ result, error, notice }: ResultsTableProps) {
           </div>
         </div>
       ) : notice ? (
-        <div className="m-3 flex items-center gap-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-200">
+        <div className="m-3.5 flex items-center gap-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-xs text-emerald-200">
           <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
           <span>{notice}</span>
         </div>
@@ -61,24 +61,24 @@ export function ResultsTable({ result, error, notice }: ResultsTableProps) {
           Query returned no columns.
         </div>
       ) : (
-        <div className="max-h-60 overflow-auto">
+        <div className="neu-inset m-2.5 max-h-64 overflow-auto rounded-xl p-1">
           <table className="w-full border-collapse text-left text-xs">
-            <thead className="sticky top-0 z-10 bg-[#0B101B] shadow-[0_1px_0_rgba(148,163,184,0.12)]">
+            <thead className="sticky top-0 z-10 bg-[#0c1320] shadow-[0_1px_0_rgba(255,255,255,0.06)]">
               <tr>
-                <th className="w-10 border-b border-slate-800 px-3 py-2 text-center font-mono text-[10px] font-medium text-slate-500">
+                <th className="w-10 border-b border-white/[0.05] px-3 py-2 text-center font-mono text-[10px] font-medium text-slate-500">
                   #
                 </th>
                 {result.columns.map((col, idx) => (
                   <th
                     key={`${col}-${idx}`}
-                    className="border-b border-slate-800 px-3 py-2 font-mono text-[11px] font-semibold text-slate-300"
+                    className="border-b border-white/[0.05] px-3 py-2 font-mono text-[11px] font-semibold text-slate-300"
                   >
                     {col}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60">
+            <tbody className="divide-y divide-white/[0.03]">
               {result.rows.length === 0 ? (
                 <tr>
                   <td
@@ -92,7 +92,7 @@ export function ResultsTable({ result, error, notice }: ResultsTableProps) {
                 result.rows.map((row, rowIdx) => (
                   <tr
                     key={rowIdx}
-                    className="transition-colors hover:bg-slate-800/35"
+                    className="neu-table-row transition-colors"
                   >
                     <td className="px-3 py-2 text-center font-mono text-[10px] text-slate-500">
                       {rowIdx + 1}
@@ -103,7 +103,7 @@ export function ResultsTable({ result, error, notice }: ResultsTableProps) {
                         className="px-3 py-2 font-mono text-xs text-slate-200"
                       >
                         {cell === null ? (
-                          <span className="inline-flex items-center rounded border border-slate-700/80 bg-slate-800/90 px-1.5 py-0.5 text-[10px] font-semibold italic tracking-wide text-slate-400">
+                          <span className="neu-badge inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold italic tracking-wide text-slate-400">
                             NULL
                           </span>
                         ) : (
