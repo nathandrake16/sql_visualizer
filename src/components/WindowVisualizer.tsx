@@ -15,7 +15,9 @@ import { SqlValue } from '@/types/sql';
 
 interface WindowVisualizerProps {
   snapshot: VizWindowSnapshot;
-  replayNonce: number;
+  replayNonce?: number;
+  activeStage?: 1 | 2 | 3 | 4;
+  hideTopControls?: boolean;
 }
 
 const PARTITION_THEMES = [
@@ -49,11 +51,31 @@ const PARTITION_THEMES = [
   },
 ];
 
-export function WindowVisualizer({ snapshot, replayNonce }: WindowVisualizerProps) {
-  return <WindowVisualizerInner key={replayNonce} snapshot={snapshot} />;
+export function WindowVisualizer({
+  snapshot,
+  replayNonce = 0,
+  activeStage,
+  hideTopControls = false,
+}: WindowVisualizerProps) {
+  return (
+    <WindowVisualizerInner
+      key={replayNonce}
+      snapshot={snapshot}
+      activeStage={activeStage}
+      hideTopControls={hideTopControls}
+    />
+  );
 }
 
-function WindowVisualizerInner({ snapshot }: { snapshot: VizWindowSnapshot }) {
+function WindowVisualizerInner({
+  snapshot,
+  activeStage,
+  hideTopControls = false,
+}: {
+  snapshot: VizWindowSnapshot;
+  activeStage?: 1 | 2 | 3 | 4;
+  hideTopControls?: boolean;
+}) {
   const steps = [
     { id: 1, label: '1. Partitioning', desc: 'Group rows into distinct partition buckets' },
     { id: 2, label: '2. In-Partition Sort', desc: 'Order rows within each partition' },
@@ -61,68 +83,73 @@ function WindowVisualizerInner({ snapshot }: { snapshot: VizWindowSnapshot }) {
     { id: 4, label: '4. Window Projection', desc: 'Attach calculated window value to each output row' },
   ];
 
-  const [activeStep, setActiveStep] = useState<number>(3);
+  const [internalStep, setInternalStep] = useState<number>(activeStage ?? 3);
+  const activeStep = activeStage ?? internalStep;
   const win = snapshot.functionSpec;
 
   return (
     <div className="flex flex-col gap-3 font-mono text-xs">
-      {/* Function Spec Banner */}
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-500/30 bg-[#0A0F1A] px-3.5 py-2.5">
-        <div className="flex items-center gap-2">
-          <TrendingUp className="h-4 w-4 text-sky-400" />
-          <span className="font-semibold text-slate-100">Window Function:</span>
-          <code className="rounded bg-sky-500/15 px-2 py-0.5 text-xs text-sky-300">
-            {win.funcName}({win.funcArgs.join(', ')})
-          </code>
-          {win.alias && (
-            <span className="text-slate-400">
-              AS <span className="text-white font-bold">{win.alias}</span>
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setActiveStep((s) => (s < 4 ? s + 1 : 1))}
-            className="inline-flex items-center gap-1 rounded border border-slate-700 bg-slate-800 px-2.5 py-1 text-[11px] text-slate-200 hover:border-slate-600"
-          >
-            {activeStep === 4 ? (
-              <>
-                <RotateCcw className="h-3 w-3 text-sky-400" /> Reset View
-              </>
-            ) : (
-              <>
-                <Play className="h-3 w-3 fill-current text-emerald-400" /> Step {activeStep}/4
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Interactive Step Switcher */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {steps.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => setActiveStep(s.id)}
-            className={`rounded-lg border p-2 text-left transition ${
-              activeStep === s.id
-                ? 'border-sky-500 bg-sky-500/15 text-white shadow-sm'
-                : activeStep > s.id
-                  ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300'
-                  : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700'
-            }`}
-          >
-            <div className="font-semibold text-[11px] flex items-center justify-between">
-              <span>{s.label}</span>
-              {activeStep > s.id && <CheckCircle2 className="h-3 w-3 text-emerald-400" />}
+      {!hideTopControls && (
+        <>
+          {/* Function Spec Banner */}
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-500/30 bg-[#0A0F1A] px-3.5 py-2.5">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-sky-400" />
+              <span className="font-semibold text-slate-100">Window Function:</span>
+              <code className="rounded bg-sky-500/15 px-2 py-0.5 text-xs text-sky-300">
+                {win.funcName}({win.funcArgs.join(', ')})
+              </code>
+              {win.alias && (
+                <span className="text-slate-400">
+                  AS <span className="text-white font-bold">{win.alias}</span>
+                </span>
+              )}
             </div>
-            <div className="mt-0.5 text-[10px] opacity-75 truncate">{s.desc}</div>
-          </button>
-        ))}
-      </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setInternalStep((s) => (s < 4 ? s + 1 : 1))}
+                className="inline-flex items-center gap-1 rounded border border-slate-700 bg-slate-800 px-2.5 py-1 text-[11px] text-slate-200 hover:border-slate-600"
+              >
+                {activeStep === 4 ? (
+                  <>
+                    <RotateCcw className="h-3 w-3 text-sky-400" /> Reset View
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-3 w-3 fill-current text-emerald-400" /> Step {activeStep}/4
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Interactive Step Switcher */}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {steps.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setInternalStep(s.id)}
+                className={`rounded-lg border p-2 text-left transition ${
+                  activeStep === s.id
+                    ? 'border-sky-500 bg-sky-500/15 text-white shadow-sm'
+                    : activeStep > s.id
+                      ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300'
+                      : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                <div className="font-semibold text-[11px] flex items-center justify-between">
+                  <span>{s.label}</span>
+                  {activeStep > s.id && <CheckCircle2 className="h-3 w-3 text-emerald-400" />}
+                </div>
+                <div className="mt-0.5 text-[10px] opacity-75 truncate">{s.desc}</div>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       {/* Explanatory Caption */}
       <div className="rounded-lg border border-slate-800/80 bg-[#0B101B] px-3.5 py-2 text-[11px] text-slate-300">

@@ -150,4 +150,17 @@ export interface Challenge {
   };
 }
 
-export type VizStep = 'FROM' | 'JOIN' | 'WHERE' | 'SELECT' | 'PARTITION' | 'SORT' | 'FRAME' | 'CTE_STEP' | 'SUBQUERY_STEP';
+export type VizStep =
+  | 'CTE'
+  | 'FROM'
+  | 'JOIN'
+  | 'SUBQUERY'
+  | 'WHERE'
+  | 'GROUP_BY'
+  | 'HAVING'
+  | 'WINDOW_PARTITION'
+  | 'WINDOW_SORT'
+  | 'WINDOW_FRAME'
+  | 'SELECT'
+  | 'ORDER_BY'
+  | 'LIMIT';

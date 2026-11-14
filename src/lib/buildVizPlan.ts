@@ -1,5 +1,6 @@
 import type { Database } from 'sql.js';
 import { SCHEMA_METADATA } from '@/data/seed';
+import { splitTopLevelCommas } from '@/lib/sqlParser';
 import {
   ParsedQuery,
   SqlRow,
@@ -43,6 +44,21 @@ export interface VizColumnMeta {
   isJoinKey: boolean;
   isPrimaryKey: boolean;
   isForeignKey: boolean;
+}
+
+export interface VizOrderByCol {
+  column: string;
+  direction: 'ASC' | 'DESC';
+}
+
+export interface VizGroupBucket {
+  key: string;
+  displayKey: string;
+  colorIndex: number;
+  rowCount: number;
+  rows: VizSourceRow[];
+  aggregates: Record<string, SqlValue>;
+  keptByHaving: boolean;
 }
 
 // Window Function Visualization Data Types
@@ -117,6 +133,22 @@ export interface VizSnapshot {
   edges: VizJoinEdge[];
   mergedRows: VizMergedRow[];
   hasWhere: boolean;
+  // GROUP BY & HAVING
+  hasGroupBy: boolean;
+  groupByColumns: string[];
+  groupBuckets: VizGroupBucket[];
+  hasHaving: boolean;
+  havingClause?: string | null;
+  // ORDER BY
+  hasOrderBy: boolean;
+  orderByColumns: VizOrderByCol[];
+  sortedLeftRows: VizSourceRow[];
+  sortedMergedRows: VizMergedRow[];
+  // LIMIT
+  hasLimit: boolean;
+  limitCount: number | null;
+  offsetCount: number | null;
+  // Sub-snapshots
   windowSnapshot?: VizWindowSnapshot;
   cteSnapshot?: VizCteSnapshot;
   subquerySnapshot?: VizSubquerySnapshot;
@@ -236,9 +268,14 @@ function buildWindowSnapshot(
   const winFn = parsed.windowFunctions[0];
 
   try {
-    const cleanExpr = winFn.raw.replace(/;+\s*$/, '').trim();
+    let cleanExpr = winFn.raw.replace(/;+\s*$/, '').trim();
+    if (winFn.alias) {
+      cleanExpr = cleanExpr
+        .replace(new RegExp(`\\s+(?:AS\\s+)?["\`]?${winFn.alias}["\`]?$`, 'i'), '')
+        .trim();
+    }
     const wherePart = parsed.whereClause ? `WHERE ${parsed.whereClause}` : '';
-    const traceSql = `SELECT rowid AS __rid, *, (${cleanExpr}) AS __win_val FROM "${fromTable}" ${wherePart}`;
+    const traceSql = `SELECT rowid AS __rid, *, ${cleanExpr} AS __win_val FROM "${fromTable}" ${wherePart}`;
     const res = db.exec(traceSql);
 
     if (!res.length) return undefined;
@@ -412,6 +449,212 @@ function buildSubquerySnapshot(
 }
 
 // -------------------------------------------------------------
+// HELPER CALCULATORS FOR ORDER BY, LIMIT, AND GROUP BY/HAVING
+// -------------------------------------------------------------
+export function parseOrderByColumns(rawClause: string | null): VizOrderByCol[] {
+  if (!rawClause) return [];
+  const parts = splitTopLevelCommas(rawClause);
+  const out: VizOrderByCol[] = [];
+  for (const part of parts) {
+    const trimmed = part.trim();
+    const match = trimmed.match(/^([a-zA-Z0-9_.]+)(?:\s+(ASC|DESC))?$/i);
+    if (match) {
+      const col = match[1].split('.').pop() || match[1];
+      out.push({
+        column: col.replace(/["`]/g, '').trim(),
+        direction: match[2]?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC',
+      });
+    }
+  }
+  return out;
+}
+
+export function parseLimitClause(rawClause: string | null): {
+  limitCount: number | null;
+  offsetCount: number | null;
+} {
+  if (!rawClause) return { limitCount: null, offsetCount: null };
+  const trimmed = rawClause.trim();
+
+  // Pattern: LIMIT x OFFSET y
+  const offsetMatch = trimmed.match(/^(\d+)\s+OFFSET\s+(\d+)$/i);
+  if (offsetMatch) {
+    return {
+      limitCount: parseInt(offsetMatch[1], 10),
+      offsetCount: parseInt(offsetMatch[2], 10),
+    };
+  }
+
+  // Pattern: LIMIT y, x (offset, count)
+  const commaMatch = trimmed.match(/^(\d+)\s*,\s*(\d+)$/);
+  if (commaMatch) {
+    return {
+      offsetCount: parseInt(commaMatch[1], 10),
+      limitCount: parseInt(commaMatch[2], 10),
+    };
+  }
+
+  // Pattern: LIMIT x
+  const singleMatch = trimmed.match(/^(\d+)$/);
+  if (singleMatch) {
+    return {
+      limitCount: parseInt(singleMatch[1], 10),
+      offsetCount: null,
+    };
+  }
+
+  return { limitCount: null, offsetCount: null };
+}
+
+function compareSqlValues(a: SqlValue, b: SqlValue, direction: 'ASC' | 'DESC'): number {
+  if (a === b) return 0;
+  if (a === null || a === undefined) return direction === 'ASC' ? 1 : -1;
+  if (b === null || b === undefined) return direction === 'ASC' ? -1 : 1;
+  let cmp = 0;
+  if (typeof a === 'number' && typeof b === 'number') {
+    cmp = a - b;
+  } else {
+    cmp = String(a).localeCompare(String(b), undefined, { numeric: true });
+  }
+  return direction === 'DESC' ? -cmp : cmp;
+}
+
+export function getRowValue(row: VizSourceRow, colName: string): SqlValue {
+  if (row.data[colName] !== undefined) return row.data[colName];
+  const lower = colName.toLowerCase();
+  for (const k of Object.keys(row.data)) {
+    if (k.toLowerCase() === lower) return row.data[k];
+  }
+  return null;
+}
+
+export function sortRows(rows: VizSourceRow[], orderByCols: VizOrderByCol[]): VizSourceRow[] {
+  if (orderByCols.length === 0) return [...rows];
+  return [...rows].sort((a, b) => {
+    for (const ob of orderByCols) {
+      const valA = getRowValue(a, ob.column);
+      const valB = getRowValue(b, ob.column);
+      const cmp = compareSqlValues(valA, valB, ob.direction);
+      if (cmp !== 0) return cmp;
+    }
+    return 0;
+  });
+}
+
+export function getMergedRowValue(row: VizMergedRow, colName: string): SqlValue {
+  if (row.leftRow) {
+    const val = getRowValue(row.leftRow, colName);
+    if (val !== null && val !== undefined) return val;
+  }
+  if (row.rightRow) {
+    const val = getRowValue(row.rightRow, colName);
+    if (val !== null && val !== undefined) return val;
+  }
+  return null;
+}
+
+export function sortMergedRows(rows: VizMergedRow[], orderByCols: VizOrderByCol[]): VizMergedRow[] {
+  if (orderByCols.length === 0) return [...rows];
+  return [...rows].sort((a, b) => {
+    for (const ob of orderByCols) {
+      const valA = getMergedRowValue(a, ob.column);
+      const valB = getMergedRowValue(b, ob.column);
+      const cmp = compareSqlValues(valA, valB, ob.direction);
+      if (cmp !== 0) return cmp;
+    }
+    return 0;
+  });
+}
+
+export function buildGroupBuckets(
+  db: Database,
+  fromTable: string,
+  whereClause: string | null,
+  groupByClause: string | null,
+  havingClause: string | null,
+  sourceRows: VizSourceRow[]
+): { groupBuckets: VizGroupBucket[]; groupByColumns: string[] } {
+  if (!groupByClause) return { groupBuckets: [], groupByColumns: [] };
+
+  const groupByColumns = splitTopLevelCommas(groupByClause).map((c) =>
+    c.split('.').pop()!.replace(/["`]/g, '').trim()
+  );
+
+  const havingPassedKeys = new Set<string>();
+  let hasHavingFilter = Boolean(havingClause);
+  if (hasHavingFilter) {
+    try {
+      const whereSql = whereClause ? `WHERE ${whereClause}` : '';
+      const testSql = `SELECT ${groupByColumns.map((c) => `"${c}"`).join(', ')} FROM "${fromTable}" ${whereSql} GROUP BY ${groupByClause} HAVING ${havingClause}`;
+      const res = db.exec(testSql);
+      if (res.length) {
+        for (const vals of res[0].values) {
+          const key = vals.map((v) => String(v ?? 'NULL')).join('::');
+          havingPassedKeys.add(key);
+        }
+      }
+    } catch {
+      hasHavingFilter = false;
+    }
+  }
+
+  const bucketMap = new Map<string, VizSourceRow[]>();
+  for (const row of sourceRows) {
+    if (!row.keptByWhere) continue;
+    const key = groupByColumns
+      .map((col) => String(getRowValue(row, col) ?? 'NULL'))
+      .join('::');
+    if (!bucketMap.has(key)) {
+      bucketMap.set(key, []);
+    }
+    bucketMap.get(key)!.push(row);
+  }
+
+  const groupBuckets: VizGroupBucket[] = [];
+  let colorIndex = 0;
+
+  bucketMap.forEach((rowsInGroup, key) => {
+    const displayParts = groupByColumns.map((col, idx) => {
+      const val = key.split('::')[idx];
+      return `${col}=${val}`;
+    });
+    const displayKey = displayParts.join(', ');
+
+    const aggregates: Record<string, SqlValue> = {
+      'COUNT(*)': rowsInGroup.length,
+    };
+
+    if (rowsInGroup.length > 0) {
+      const firstRow = rowsInGroup[0].data;
+      for (const [colName, val] of Object.entries(firstRow)) {
+        if (typeof val === 'number') {
+          const sum = rowsInGroup.reduce(
+            (acc, r) => acc + (typeof r.data[colName] === 'number' ? (r.data[colName] as number) : 0),
+            0
+          );
+          aggregates[`SUM(${colName})`] = sum;
+          aggregates[`AVG(${colName})`] = Math.round((sum / rowsInGroup.length) * 100) / 100;
+        }
+      }
+    }
+
+    const keptByHaving = hasHavingFilter ? havingPassedKeys.has(key) : true;
+
+    groupBuckets.push({
+      key,
+      displayKey,
+      colorIndex: colorIndex++,
+      rowCount: rowsInGroup.length,
+      rows: rowsInGroup,
+      aggregates,
+      keptByHaving,
+    });
+  });
+
+  return { groupBuckets, groupByColumns };
+}
+
+// -------------------------------------------------------------
 // MAIN VISUALIZATION SNAPSHOT GENERATOR
 // -------------------------------------------------------------
 export function buildVisualizationSnapshot(
@@ -421,18 +664,38 @@ export function buildVisualizationSnapshot(
   const fromTable = parsed.fromTable || 'users';
   const fromAlias = parsed.fromAlias || fromTable;
 
+  // Shared parsing for ORDER BY, LIMIT, and GROUP BY
+  const hasOrderBy = Boolean(parsed.orderByClause);
+  const orderByColumns = parseOrderByColumns(parsed.orderByClause);
+  const hasLimit = Boolean(parsed.limitClause);
+  const { limitCount, offsetCount } = parseLimitClause(parsed.limitClause);
+  const hasGroupBy = Boolean(parsed.groupByClause);
+  const hasHaving = Boolean(parsed.havingClause);
+
   // 1. Check CTE Mode
   if (parsed.vizMode === 'cte' && parsed.ctes.length > 0) {
     const cteSnapshot = buildCteSnapshot(db, parsed);
     if (cteSnapshot && cteSnapshot.nodes.length > 0) {
+      const rawRows = fetchTableRows(db, fromTable);
+      const leftRows: VizSourceRow[] = rawRows.map(({ rid, data }) => ({
+        rid,
+        data,
+        joinKeyVal: null,
+        hasPartner: true,
+        keptByJoin: true,
+        keptByWhere: true,
+        colorIndex: null,
+      }));
+      const sortedLeftRows = sortRows(leftRows, orderByColumns);
+
       return {
         supported: true,
         parsed,
         mode: 'cte',
         leftTableName: fromTable,
         leftAlias: fromAlias,
-        leftColumns: [],
-        leftRows: [],
+        leftColumns: buildColumnMeta(fromTable, fromAlias, parsed, null, []),
+        leftRows,
         rightTableName: null,
         rightAlias: null,
         rightColumns: [],
@@ -440,6 +703,18 @@ export function buildVisualizationSnapshot(
         edges: [],
         mergedRows: [],
         hasWhere: Boolean(parsed.whereClause),
+        hasGroupBy,
+        groupByColumns: [],
+        groupBuckets: [],
+        hasHaving,
+        havingClause: parsed.havingClause,
+        hasOrderBy,
+        orderByColumns,
+        sortedLeftRows,
+        sortedMergedRows: [],
+        hasLimit,
+        limitCount,
+        offsetCount,
         cteSnapshot,
       };
     }
@@ -449,6 +724,27 @@ export function buildVisualizationSnapshot(
   if (parsed.vizMode === 'window' && parsed.windowFunctions.length > 0) {
     const windowSnapshot = buildWindowSnapshot(db, parsed, fromTable);
     if (windowSnapshot) {
+      const rawRows = fetchTableRows(db, fromTable);
+      let keptRids: Set<number> | null = null;
+      if (parsed.whereClause) {
+        try {
+          const whereRes = db.exec(`SELECT rowid FROM "${fromTable}" WHERE ${parsed.whereClause}`);
+          keptRids = new Set<number>(whereRes.length ? whereRes[0].values.map((v) => Number(v[0])) : []);
+        } catch {
+          keptRids = null;
+        }
+      }
+      const leftRows: VizSourceRow[] = rawRows.map(({ rid, data }) => ({
+        rid,
+        data,
+        joinKeyVal: null,
+        hasPartner: true,
+        keptByJoin: true,
+        keptByWhere: keptRids ? keptRids.has(rid) : true,
+        colorIndex: null,
+      }));
+      const sortedLeftRows = sortRows(leftRows.filter((r) => r.keptByWhere), orderByColumns);
+
       return {
         supported: true,
         parsed,
@@ -456,7 +752,7 @@ export function buildVisualizationSnapshot(
         leftTableName: fromTable,
         leftAlias: fromAlias,
         leftColumns: buildColumnMeta(fromTable, fromAlias, parsed, null, []),
-        leftRows: [],
+        leftRows,
         rightTableName: null,
         rightAlias: null,
         rightColumns: [],
@@ -464,6 +760,18 @@ export function buildVisualizationSnapshot(
         edges: [],
         mergedRows: [],
         hasWhere: Boolean(parsed.whereClause),
+        hasGroupBy,
+        groupByColumns: [],
+        groupBuckets: [],
+        hasHaving,
+        havingClause: parsed.havingClause,
+        hasOrderBy,
+        orderByColumns,
+        sortedLeftRows,
+        sortedMergedRows: [],
+        hasLimit,
+        limitCount,
+        offsetCount,
         windowSnapshot,
       };
     }
@@ -473,6 +781,17 @@ export function buildVisualizationSnapshot(
   if (parsed.vizMode === 'subquery' && parsed.subqueries.length > 0) {
     const subquerySnapshot = buildSubquerySnapshot(db, parsed, fromTable);
     if (subquerySnapshot) {
+      const leftRows: VizSourceRow[] = subquerySnapshot.outerRows.map((r) => ({
+        rid: r.rid,
+        data: r.data,
+        joinKeyVal: null,
+        hasPartner: true,
+        keptByJoin: true,
+        keptByWhere: r.matched,
+        colorIndex: null,
+      }));
+      const sortedLeftRows = sortRows(leftRows.filter((r) => r.keptByWhere), orderByColumns);
+
       return {
         supported: true,
         parsed,
@@ -480,7 +799,7 @@ export function buildVisualizationSnapshot(
         leftTableName: fromTable,
         leftAlias: fromAlias,
         leftColumns: buildColumnMeta(fromTable, fromAlias, parsed, null, []),
-        leftRows: [],
+        leftRows,
         rightTableName: null,
         rightAlias: null,
         rightColumns: [],
@@ -488,6 +807,18 @@ export function buildVisualizationSnapshot(
         edges: [],
         mergedRows: [],
         hasWhere: Boolean(parsed.whereClause),
+        hasGroupBy,
+        groupByColumns: [],
+        groupBuckets: [],
+        hasHaving,
+        havingClause: parsed.havingClause,
+        hasOrderBy,
+        orderByColumns,
+        sortedLeftRows,
+        sortedMergedRows: [],
+        hasLimit,
+        limitCount,
+        offsetCount,
         subquerySnapshot,
       };
     }
@@ -521,6 +852,20 @@ export function buildVisualizationSnapshot(
       colorIndex: null,
     }));
 
+    const sortedLeftRows = sortRows(
+      leftRows.filter((r) => r.keptByWhere),
+      orderByColumns
+    );
+
+    const { groupBuckets, groupByColumns } = buildGroupBuckets(
+      db,
+      fromTable,
+      parsed.whereClause,
+      parsed.groupByClause ?? null,
+      parsed.havingClause ?? null,
+      leftRows
+    );
+
     return {
       supported: true,
       parsed,
@@ -536,6 +881,18 @@ export function buildVisualizationSnapshot(
       edges: [],
       mergedRows: [],
       hasWhere: Boolean(parsed.whereClause),
+      hasGroupBy,
+      groupByColumns,
+      groupBuckets,
+      hasHaving,
+      havingClause: parsed.havingClause,
+      hasOrderBy,
+      orderByColumns,
+      sortedLeftRows,
+      sortedMergedRows: [],
+      hasLimit,
+      limitCount,
+      offsetCount,
     };
   }
 
@@ -736,6 +1093,11 @@ export function buildVisualizationSnapshot(
     for (const m of mergedRows) m.keptByWhere = true;
   }
 
+  const sortedMergedRows = sortMergedRows(
+    mergedRows.filter((r) => r.keptByWhere),
+    orderByColumns
+  );
+
   return {
     supported: true,
     parsed,
@@ -751,5 +1113,17 @@ export function buildVisualizationSnapshot(
     edges,
     mergedRows,
     hasWhere: Boolean(parsed.whereClause),
+    hasGroupBy,
+    groupByColumns: [],
+    groupBuckets: [],
+    hasHaving,
+    havingClause: parsed.havingClause,
+    hasOrderBy,
+    orderByColumns,
+    sortedLeftRows: [],
+    sortedMergedRows,
+    hasLimit,
+    limitCount,
+    offsetCount,
   };
 }
