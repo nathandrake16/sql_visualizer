@@ -246,6 +246,7 @@ function QueryVisualizerInner({ snapshot }: { snapshot: VizSnapshot | null }) {
   const [isPlaying, setIsPlaying] = useState(() =>
     Boolean(snapshot?.supported && steps.length > 1)
   );
+  const [playbackSpeed, setPlaybackSpeed] = useState<0.5 | 1 | 1.5>(1);
   const [hoveredRow, setHoveredRow] = useState<{
     side: 'left' | 'right';
     rid: number;
@@ -256,6 +257,12 @@ function QueryVisualizerInner({ snapshot }: { snapshot: VizSnapshot | null }) {
   useEffect(() => {
     if (!isPlaying || steps.length <= 1) return;
 
+    // Comfortable base interval of 3000ms:
+    // 0.5x = 6000ms (Slow / Deep Study)
+    // 1.0x = 3000ms (Comfortable & Relaxed)
+    // 1.5x = 2000ms (Brisk)
+    const intervalMs = Math.round(3000 / playbackSpeed);
+
     const timer = window.setInterval(() => {
       setActiveStepIdx((prev) => {
         if (prev >= steps.length - 1) {
@@ -264,10 +271,10 @@ function QueryVisualizerInner({ snapshot }: { snapshot: VizSnapshot | null }) {
         }
         return prev + 1;
       });
-    }, 1550);
+    }, intervalMs);
 
     return () => window.clearInterval(timer);
-  }, [isPlaying, steps.length]);
+  }, [isPlaying, playbackSpeed, steps.length]);
 
   // Refs & geometry measurement for SVG FK -> PK relationship curves
   const boardRef = useRef<HTMLDivElement | null>(null);
@@ -486,7 +493,26 @@ function QueryVisualizerInner({ snapshot }: { snapshot: VizSnapshot | null }) {
         </div>
 
         {/* Playback Controls */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
+          {/* Speed Selector */}
+          <div className="neu-inset-tray flex items-center rounded-xl p-0.5 text-[10px]">
+            {([0.5, 1, 1.5] as const).map((spd) => (
+              <button
+                key={spd}
+                type="button"
+                onClick={() => setPlaybackSpeed(spd)}
+                className={`rounded-lg px-2 py-0.5 font-mono font-bold transition ${
+                  playbackSpeed === spd
+                    ? 'neu-btn-active text-sky-300'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title={`Playback Speed: ${spd}x`}
+              >
+                {spd}x
+              </button>
+            ))}
+          </div>
+
           <button
             type="button"
             onClick={() => {
@@ -612,7 +638,7 @@ function QueryVisualizerInner({ snapshot }: { snapshot: VizSnapshot | null }) {
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.22 }}
+              transition={{ duration: 0.45, ease: 'easeInOut' }}
             >
               <CteVisualizer snapshot={snapshot.cteSnapshot} />
             </motion.div>
@@ -627,7 +653,7 @@ function QueryVisualizerInner({ snapshot }: { snapshot: VizSnapshot | null }) {
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.22 }}
+              transition={{ duration: 0.45, ease: 'easeInOut' }}
             >
               <SubqueryVisualizer snapshot={snapshot.subquerySnapshot} />
             </motion.div>
@@ -645,7 +671,7 @@ function QueryVisualizerInner({ snapshot }: { snapshot: VizSnapshot | null }) {
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.22 }}
+                transition={{ duration: 0.45, ease: 'easeInOut' }}
               >
                 <WindowVisualizer
                   snapshot={snapshot.windowSnapshot}
@@ -670,7 +696,7 @@ function QueryVisualizerInner({ snapshot }: { snapshot: VizSnapshot | null }) {
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.22 }}
+              transition={{ duration: 0.45, ease: 'easeInOut' }}
             >
               <GroupBucketsView snapshot={snapshot} activeStep={activeStep} />
             </motion.div>
@@ -685,7 +711,7 @@ function QueryVisualizerInner({ snapshot }: { snapshot: VizSnapshot | null }) {
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.22 }}
+              transition={{ duration: 0.45, ease: 'easeInOut' }}
             >
               <OrderByView snapshot={snapshot} isJoinMode={isJoinMode} />
             </motion.div>
@@ -700,7 +726,7 @@ function QueryVisualizerInner({ snapshot }: { snapshot: VizSnapshot | null }) {
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.22 }}
+              transition={{ duration: 0.45, ease: 'easeInOut' }}
             >
               <LimitView snapshot={snapshot} isJoinMode={isJoinMode} />
             </motion.div>
@@ -716,7 +742,7 @@ function QueryVisualizerInner({ snapshot }: { snapshot: VizSnapshot | null }) {
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.22 }}
+              transition={{ duration: 0.45, ease: 'easeInOut' }}
               className="overflow-x-auto"
             >
               <div className="mb-2 flex items-center justify-between">
@@ -752,7 +778,7 @@ function QueryVisualizerInner({ snapshot }: { snapshot: VizSnapshot | null }) {
                         return (
                           <th
                             key={col.name}
-                            className={`px-3 py-2 text-[11px] font-semibold transition-all duration-300 ${
+                            className={`px-3 py-2 text-[11px] font-semibold transition-all duration-500 ${
                               showSelectHighlights && col.selected
                                 ? 'bg-sky-500/15 text-sky-300 shadow-[inset_0_-2px_0_#38BDF8]'
                                 : colActive
@@ -783,7 +809,7 @@ function QueryVisualizerInner({ snapshot }: { snapshot: VizSnapshot | null }) {
                           animate={{
                             opacity: kept ? 1 : 0.24,
                           }}
-                          transition={{ duration: 0.35 }}
+                          transition={{ duration: 0.55, ease: 'easeInOut' }}
                           className={
                             showWhereHighlights && row.keptByWhere
                               ? 'bg-emerald-500/10'
@@ -795,7 +821,7 @@ function QueryVisualizerInner({ snapshot }: { snapshot: VizSnapshot | null }) {
                             return (
                               <td
                                 key={col.name}
-                                className={`px-3 py-2 transition-all duration-300 ${
+                                className={`px-3 py-2 transition-all duration-500 ${
                                   showWhereHighlights && row.keptByWhere
                                     ? 'text-emerald-100'
                                     : 'text-slate-200'
@@ -844,7 +870,7 @@ function QueryVisualizerInner({ snapshot }: { snapshot: VizSnapshot | null }) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.22 }}
+              transition={{ duration: 0.45, ease: 'easeInOut' }}
               ref={boardRef}
               className="relative"
             >
@@ -879,7 +905,7 @@ function QueryVisualizerInner({ snapshot }: { snapshot: VizSnapshot | null }) {
                             pathLength: 1,
                             opacity: isHighlighted ? 0.92 : 0.18,
                           }}
-                          transition={{ duration: 0.55, ease: 'easeOut' }}
+                          transition={{ duration: 0.75, ease: 'easeInOut' }}
                         />
                         <motion.circle
                           cx={line.x1}
@@ -1146,7 +1172,7 @@ function QueryVisualizerInner({ snapshot }: { snapshot: VizSnapshot | null }) {
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.25 }}
+              transition={{ duration: 0.45, ease: 'easeInOut' }}
               className="flex flex-col gap-4"
             >
               {/* Compact Row Retention Summary Strip for Table A & Table B */}
@@ -1308,7 +1334,7 @@ function QueryVisualizerInner({ snapshot }: { snapshot: VizSnapshot | null }) {
                         animate={{
                           opacity: whereFilteredOut ? 0.22 : 1,
                         }}
-                        transition={{ duration: 0.35, delay: idx * 0.04 }}
+                        transition={{ duration: 0.55, delay: idx * 0.06 }}
                         className={`flex items-stretch font-mono text-[11px] ${
                           whereKept
                             ? 'bg-emerald-500/12 shadow-[inset_3px_0_0_#10B981]'
@@ -1321,9 +1347,9 @@ function QueryVisualizerInner({ snapshot }: { snapshot: VizSnapshot | null }) {
                           animate={{ x: 0, opacity: 1 }}
                           transition={{
                             type: 'spring',
-                            stiffness: 260,
-                            damping: 24,
-                            delay: idx * 0.05,
+                            stiffness: 140,
+                            damping: 22,
+                            delay: idx * 0.08,
                           }}
                           style={{
                             gridTemplateColumns: `repeat(${Math.max(1, snapshot.leftColumns.length)}, minmax(0, 1fr))`,
@@ -1393,9 +1419,9 @@ function QueryVisualizerInner({ snapshot }: { snapshot: VizSnapshot | null }) {
                           animate={{ x: 0, opacity: 1 }}
                           transition={{
                             type: 'spring',
-                            stiffness: 260,
-                            damping: 24,
-                            delay: idx * 0.05 + 0.06,
+                            stiffness: 140,
+                            damping: 22,
+                            delay: idx * 0.08 + 0.06,
                           }}
                           style={{
                             gridTemplateColumns: `repeat(${Math.max(1, snapshot.rightColumns.length)}, minmax(0, 1fr))`,
@@ -1542,7 +1568,7 @@ function GroupBucketsView({
               key={bucket.key}
               initial={{ opacity: 0, scale: 0.97 }}
               animate={{ opacity: isDropped ? 0.32 : 1, scale: 1 }}
-              transition={{ duration: 0.25 }}
+              transition={{ duration: 0.5, ease: 'easeInOut' }}
               className={`overflow-hidden rounded-xl border ${
                 isDropped ? 'border-slate-800 bg-slate-900/30' : `${palette.border} bg-[#0A0F1A]`
               } shadow-sm`}
@@ -1748,7 +1774,7 @@ function OrderByView({
                 layout
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ type: 'spring', stiffness: 350, damping: 28 }}
+                transition={{ type: 'spring', stiffness: 140, damping: 22 }}
                 className="hover:bg-slate-800/30"
               >
                 <td className="px-3 py-2 text-center">
@@ -1843,6 +1869,7 @@ function LimitView({
                     key={mRow.id}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: isKept ? 1 : 0.25 }}
+                    transition={{ duration: 0.55, ease: 'easeInOut' }}
                     className={
                       isKept
                         ? 'bg-emerald-500/5 hover:bg-emerald-500/10'
@@ -1925,6 +1952,7 @@ function LimitView({
                   key={row.rid}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: isKept ? 1 : 0.25 }}
+                  transition={{ duration: 0.55, ease: 'easeInOut' }}
                   className={
                     isKept
                       ? 'bg-emerald-500/5 hover:bg-emerald-500/10'

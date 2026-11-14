@@ -24,6 +24,7 @@ export function SubqueryVisualizer({ snapshot }: SubqueryVisualizerProps) {
       <motion.div
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, ease: 'easeInOut' }}
         className="neu-card rounded-2xl p-4 sm:p-5"
       >
         <div className="flex items-center justify-between gap-2 mb-2.5">

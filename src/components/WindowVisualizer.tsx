@@ -197,7 +197,7 @@ function WindowVisualizerInner({
                 key={part.key}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.25, delay: pIdx * 0.08 }}
+                transition={{ duration: 0.5, delay: pIdx * 0.12, ease: 'easeInOut' }}
                 className={`neu-card overflow-hidden rounded-xl`}
               >
                 {/* Partition Header */}
