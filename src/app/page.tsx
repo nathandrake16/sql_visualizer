@@ -1,5 +1,5 @@
-import { SqlWorkbench } from '@/components/SqlWorkbench';
+import { ProblemDirectory } from '@/components/ProblemDirectory';
 
 export default function HomePage() {
-  return <SqlWorkbench />;
+  return <ProblemDirectory />;
 }
